@@ -404,43 +404,54 @@ namespace Utils {
                 }
                 static Pixel lerp(short a, short b, float t) {
                     Pixel result { Color::BLACK };
+                    result.color = a;
+                    result.background = b;
                     float seg = 1.0f / 7.0f;
                     if (t < 2 * seg) {
-                        result.color = a;
                         result.background = a;
                     } else if (t < 4 * seg) {
-                        result.color = a;
-                        result.background = b;
                         result.symbol = Symbol::HALF;
                     } else if (t < 6 * seg) {
-                        result.color = a;
-                        result.background = b;
                         result.symbol = Symbol::QUARTER;
                     } else {
+                        result.background = a;
                         result.color = b;
-                        result.background = b;
                     }
                     return result;
                 }
                 static Pixel rgb(float r, float g, float b) {
-                    std::vector<std::pair<float,short>> cols { { r, Color::RED }, { g, Color::GREEN }, { b, Color::BLUE } };
+                    std::vector<std::pair<float,short>> cols { 
+                        { r, Color::RED }, 
+                        { g, Color::GREEN }, 
+                        { b, Color::BLUE }
+                    };
                     std::sort(cols.begin(), cols.end(), Pixel::sortCols);
                     std::pair<float, short> pri = cols[0], sec = cols[1];
-                    short A = sec.second;
-                    short B = pri.second;
+                    short A = pri.second;
+                    short B = sec.second;
+                    short M = A | B;
                     float total = pri.first + sec.first;
-                    float f = pri.first / total;
+                    float f = max(0.0f, min(1.0f, 2.0f * (pri.first / total - 0.5f)));
                     if (sec.first < 10.0f) {
-                        f = 0.0f;
-                        A = Color::BLACK;
+                        f = pri.first / 255.0f;
+                        B = Color::BLACK;
+                        M = 0x0000;
                     }
 
-                    Pixel result = Pixel::lerp(A, A | B, 1 - 2 * (f - 0.5));
-                    if (pri.first > 128) {
-                        result.color |= 0x0008;
-                        result.background |= 0x0008;
+                    float avg = (r + g + b) / 3.0f;
+                    float dif = abs(r - avg) + abs(g - avg) + abs(b - avg);
+                    if (dif < 10.0f && avg > 10.0f) {
+                        f = avg / 255.0f;
+                        A = Color::WHITE;
+                        B = Color::BLACK;
+                        M = 0x0000;
                     }
-                
+                    
+                    Pixel result = Pixel::lerp(A, M, 1.0f - f);
+
+                    result.color |= 0x0008;
+                    result.background |= 0x0008;
+                    
                     return result;
                 }
                 short getColor() {
@@ -687,7 +698,6 @@ namespace Utils {
                 for (int i = 0; i < width; i++) for (int j = 0; j < height; j++) {
                     float ax = x + (float)i;
                     float ay = y + (float)j;
-                    //test { Pixel::rgb(255*ax/200, 0.0f, 0 ) };
                     Utils::Graphics::setPixel(ax, ay, col);
                 }
             }
@@ -722,7 +732,7 @@ namespace Utils {
                 float wr = f.width / w;
                 float hr = f.height / h;
                 for (int i = 0; i < w; i++) for (int j = 0; j < h; j++) {
-                    setPixel(x + i, y + j, f.pixels[(int)(i*wr)][(int)(j*hr / 2)]);
+                    setPixel(x + i, y + j, f.pixels[(int)(i * wr)][(int)(j * hr / 2)]);
                 }
             }
             void pixelOperation(Pixel operation(float, float), float sx = 0.0f, float sy = 0.0f, float sw = width, float sh = height) {
