@@ -19,7 +19,7 @@ namespace Utils {
             private:
                 std::string str;
             public:
-                Printable() {}
+                Printable() { }
                 Printable(std::string str) {
                     this->str = str;
                 }
@@ -89,8 +89,8 @@ namespace Utils {
 
                 }
         };
-        std::vector<Utils::Print::Printable> prints {};
-        Utils::Print::Printable concat {""};
+        std::vector<Utils::Print::Printable> prints { };
+        Utils::Print::Printable concat { "" };
         std::string print(std::string msg) {
             std::cout << msg;
             prints.push_back(Utils::Print::Printable(msg));
@@ -377,6 +377,11 @@ namespace Utils {
                 char symbol = ((std::string)"\xDB").at(0);
                 short color = Color::BLACK;
                 short background = -1;
+                Pixel(char symbol, short color, short background) {
+                    this->symbol = symbol;
+                    this->color = color;
+                    this->background = background;
+                }
                 Pixel(short color, short background) {
                     this->color = color;
                     this->background = background;
@@ -597,10 +602,13 @@ namespace Utils {
             if (ax < 0 || ax >Graphics::r_width - 1 || ay < 0 || ay > Graphics::r_height - 1) return EMPTY;
             return Graphics::pixels[ax][ay];
         }
+        void noCheckSetPixel(int x, int y, Pixel col) {
+            pixels[x][y] = col;
+        } 
         void actSetPixel(int x, int y, Pixel col) {
             y /= 2;
             if (x < 0 || x > r_width - 1 || y < 0 || y > r_height - 1) return;
-            pixels[x][y] = col;
+            noCheckSetPixel(x, y, col);
         }
         void setPixel(float x, float y, Graphics::Pixel col = FULL, bool line = false) {
             Vector p { x, y };
@@ -624,7 +632,7 @@ namespace Utils {
             void text(std::string text, float x, float y, Pixel col = FULL) {
                 int len = text.size();
                 for (int i = 0; i < len; i++) {
-                    setPixel(x + i, y, { text.at(i), col.color });
+                    setPixel(x + i, y, { text.at(i), col.color, getPixel(x + i, y).color });
                 }
             }
             void ellipse(float x, float y, float rx, float ry, Pixel col = FULL) {
@@ -710,11 +718,18 @@ namespace Utils {
                     triangle(a, b, c, col);
                 }
             }
-            void image(Image f, float x, float y) {
-                float w = f.width;
-                float h = f.height * 2;
-                for (int i = 0; i < f.width; i++) for (int j = 0; j < f.height; j++) {
-                    setPixel(x + i, y + j, f.pixels[i][(int)(j / 2)]);
+            void image(Image f, float x = 0.0f, float y = 0.0f, float w = Graphics::width, float h = Graphics::height) {
+                float wr = f.width / w;
+                float hr = f.height / h;
+                for (int i = 0; i < w; i++) for (int j = 0; j < h; j++) {
+                    setPixel(x + i, y + j, f.pixels[(int)(i*wr)][(int)(j*hr / 2)]);
+                }
+            }
+            void pixelOperation(Pixel operation(float, float), float sx = 0.0f, float sy = 0.0f, float sw = width, float sh = height) {
+                for (int i = 0; i < sw; i++) for (int j = 0; j < sh; j++) {
+                    float ax = sx + i;
+                    float ay = sy + j;
+                    setPixel(ax, ay, operation(ax, ay), false);
                 }
             }
         }
@@ -798,13 +813,13 @@ namespace Utils {
             }
         }
         void draw() {
-            COORD bufferSize { (short)Graphics::r_width, (short)Graphics::r_height };
+            COORD bufferSize { (short)r_width, (short)r_height };
             COORD bufferStart { (short)0, (short)0 };
             SMALL_RECT write { bufferStart.X, bufferStart.Y, bufferSize.X, bufferSize.Y };
             std::vector<CHAR_INFO> chars { };
             for (int i = 0; i < bufferSize.X * bufferSize.Y; i++) chars.push_back({ });
-            for (int j = 0; j < Graphics::r_height; j++) for (int i = 0; i < Graphics::r_width; i++) {
-                Graphics::Pixel pixel = getPixel((float)i, (float)j);
+            for (int j = 0; j < r_height; j++) for (int i = 0; i < r_width; i++) {
+                Pixel pixel = getPixel((float)i, (float)j);
                 CHAR_INFO ch { };
                 ch.Char.AsciiChar = pixel.symbol;
                 ch.Char.UnicodeChar = pixel.symbol;
@@ -812,13 +827,13 @@ namespace Utils {
                 int inx = i + (j * bufferSize.X);
                 chars[inx] = ch;
             }
-            WriteConsoleOutput(Graphics::console_handle, &chars[0], bufferSize, bufferStart, &write);
+            WriteConsoleOutput(console_handle, &chars[0], bufferSize, bufferStart, &write);
         }
         void clear() {
             Print::clear();
-            for (int j = 0; j < Graphics::r_height; j++) {
-                for (int i = 0; i < Graphics::r_width; i++) {
-                    Graphics::pixels[i][j] = EMPTY;
+            for (int j = 0; j < r_height; j++) {
+                for (int i = 0; i < r_width; i++) {
+                    pixels[i][j] = EMPTY;
                 }
             }
             Transform::transformStack.clear();
@@ -838,7 +853,8 @@ namespace Utils {
                 virtual void init() {}
                 virtual void update() {}
         };
-        void start(Utils::Program::ProgramBase* program) {
+        void start(Utils::Program::ProgramBase* program, short appliedFontSize = 5) {
+            CHAR_WIDTH = appliedFontSize;
             Input::Mouse::init();
             Input::Keyboard::init();
             program->init();
