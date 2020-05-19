@@ -7,6 +7,7 @@
 #include <cmath>
 #include <algorithm>
 #include <stdlib.h>
+#include <stdio.h>
 #include <windows.h>
 
 #pragma comment(lib, "User32.lib")
@@ -230,6 +231,26 @@ namespace Utils {
             }
         }
     }
+    namespace File {
+        std::string read(const char* source) {
+            FILE* file = fopen(source, "r");
+            
+            std::string str = "";
+            char ch;
+
+            ch = fgetc(file);
+            str += ch;
+            
+            while (ch != EOF) {
+                ch = fgetc(file);
+                str += ch;
+            }
+
+            fclose(file);
+
+            return str;
+        }
+    }
     namespace Graphics {
         class Vector {
             public:
@@ -432,26 +453,33 @@ namespace Utils {
                     short M = A | B;
                     float total = pri.first + sec.first;
                     float f = max(0.0f, min(1.0f, 2.0f * (pri.first / total - 0.5f)));
-                    if (sec.first < 10.0f) {
-                        f = pri.first / 255.0f;
-                        B = Color::BLACK;
-                        M = 0x0000;
-                    }
 
                     float avg = (r + g + b) / 3.0f;
                     float dif = abs(r - avg) + abs(g - avg) + abs(b - avg);
-                    if (dif < 10.0f && avg > 10.0f) {
+
+                    bool brightness = true;
+
+                    if (sec.first < 64.0f) {
+                        f = ((pri.first + sec.first) / 2.0f) / 255.0f;
+                        B = Color::BLACK;
+                        M = 0x0000;
+                    } else if (dif < 10.0f) {
                         f = avg / 255.0f;
                         A = Color::WHITE;
                         B = Color::BLACK;
                         M = 0x0000;
                     }
+                    if ((pri.first + sec.first) / 2.0f < 100.0f) {
+                        brightness = false;
+                    }
                     
                     Pixel result = Pixel::lerp(A, M, 1.0f - f);
 
-                    result.color |= 0x0008;
-                    result.background |= 0x0008;
-                    
+                    if (brightness) {
+                        result.color |= 0x0008;
+                        result.background |= 0x0008;
+                    }
+
                     return result;
                 }
                 short getColor() {
@@ -610,7 +638,7 @@ namespace Utils {
         Graphics::Pixel getPixel(float x, float y) {
             int ax = (int)x;
             int ay = (int)y;
-            if (ax < 0 || ax >Graphics::r_width - 1 || ay < 0 || ay > Graphics::r_height - 1) return EMPTY;
+            if (ax < 0 || ax > Graphics::r_width - 1 || ay < 0 || ay > Graphics::r_height - 1) return EMPTY;
             return Graphics::pixels[ax][ay];
         }
         void noCheckSetPixel(int x, int y, Pixel col) {
