@@ -683,38 +683,6 @@ namespace Utils {
                     Utils::Graphics::setPixel(ax, ay, col);
                 }
             }
-            void rightTriangle(float x, float y, float width, float height, Vector axis, Pixel col = FULL) {
-                Vector X_A = axis;
-                Vector Y_A = X_A.normal();
-                if (height < 0) {
-                    Y_A *= -1;
-                    height *= -1;
-                }
-                if (width < 0) {
-                    X_A *= -1;
-                    width *= -1;
-                }
-                for (int i = 0; i < width; i++) for (int j = 0; j < i * height / width; j++) {
-                    float ax = i;
-                    float ay = -j;
-                    Vector p = X_A * ax + Y_A * ay;
-                    setPixel(x + p.x, y + p.y, col);
-                }
-
-            }
-            std::vector<Vector> getTriangleOrder(Vector a, Vector b, Vector c) {
-                Vector ax1 = c - a;
-                float mDot1 = b.dot(ax1);
-                float a1 = a.dot(ax1);
-                float c1 = c.dot(ax1);
-                if (min(a1, c1) < mDot1 && mDot1 < max(a1, c1)) return { a, b, c };
-                Vector ax2 = b - a;
-                float mDot2 = c.dot(ax2);
-                float b2 = b.dot(ax2);
-                float a2 = a.dot(ax2);
-                if (min(b2, a2) < mDot2 && mDot2 < max(b2, a2)) return { b, c, a };
-                return { c, a, b };
-            }
             void triangle(Vector a, Vector b, Vector c, Pixel col = FULL) {
                 Vector t_a = a - b;
                 Vector t_c = c - b;
