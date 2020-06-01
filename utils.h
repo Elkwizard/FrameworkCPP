@@ -240,7 +240,7 @@ namespace Utils {
 
             ch = fgetc(file);
             str += ch;
-            
+
             while (ch != EOF) {
                 ch = fgetc(file);
                 str += ch;
@@ -441,6 +441,9 @@ namespace Utils {
                     return result;
                 }
                 static Pixel rgb(float r, float g, float b) {
+                    r = max(r, 0);
+                    g = max(g, 0);
+                    b = max(b, 0);
                     std::vector<std::pair<float,short>> cols { 
                         { r, Color::RED }, 
                         { g, Color::GREEN }, 
@@ -459,8 +462,9 @@ namespace Utils {
 
                     bool brightness = true;
 
-                    if (sec.first < 64.0f) {
-                        f = ((pri.first + sec.first) / 2.0f) / 255.0f;
+                    if ((pri.first + sec.first) / 2.0f < 80.0f) {
+                        if (f < 0.3) A = M;
+                        f = ((pri.first + sec.first) / 2.0f) / 128.0f;
                         B = Color::BLACK;
                         M = 0x0000;
                     } else if (dif < 10.0f) {
@@ -515,7 +519,7 @@ namespace Utils {
                 }
                 void actSetPixel(int x, int y, Pixel col) {
                     y /= 2;
-                    if (x < 0 || x > this->width - 1 || y < 0 || y > this->height / 2 - 1) return;
+                    // if (x < 0 || x > this->width - 1 || y < 0 || y > this->height / 2 - 1) return;
                     this->pixels[x][y] = col;
                 }
                 void clear() {
@@ -641,6 +645,18 @@ namespace Utils {
             if (ax < 0 || ax > Graphics::r_width - 1 || ay < 0 || ay > Graphics::r_height - 1) return EMPTY;
             return Graphics::pixels[ax][ay];
         }
+        void fillScanline(int minX, int maxX, int y, Pixel col) {
+            if (y < 0 || y > height - 1) return;
+            y /= 2;
+            if (minX < 0) minX = 0;
+            if (minX > width - 1) minX = width - 1; 
+            if (maxX < 0) maxX = 0;
+            if (maxX > width - 1) maxX = width - 1;
+            int range = maxX - minX;
+            for (int i = 0; i < range; i++) {
+                pixels[minX + i][y] = col;
+            }
+        }
         void noCheckSetPixel(int x, int y, Pixel col) {
             pixels[x][y] = col;
         } 
@@ -651,16 +667,28 @@ namespace Utils {
         }
         void setPixel(float x, float y, Graphics::Pixel col = FULL, bool line = false) {
             Vector p { x, y };
-            for (Graphics::Transform::Transformation* pnt : Graphics::Transform::transformStack) {
-                p = pnt->transform(p);
-            }
             x = p.x;
             y = p.y;
             float lw = line ? lineWidth : 1.0f;
-            float hw = lw / 2;
+            float hw = lw / 2.0f;
             for (int i = 0; i < lw; i++) for (int j = 0; j < lw; j++) {
-                float Ax = x - hw + i + 1;
-                float Ay = y - hw + j + 1;
+                float Ax = x - hw + i + 1.0f;
+                float Ay = y - hw + j + 1.0f;
+                int ax = (int)Ax;
+                int ay = (int)Ay;
+                if (!embodying) actSetPixel(ax, ay, col);
+                else embodied->actSetPixel(ax, ay, col);
+            }
+        }
+        void setPixelSafe(float x, float y, Graphics::Pixel col = FULL, bool line = false) {
+            Vector p { x, y };
+            x = p.x;
+            y = p.y;
+            float lw = line ? lineWidth : 1.0f;
+            float hw = lw / 2.0f;
+            for (int i = 0; i < lw; i++) for (int j = 0; j < lw; j++) {
+                float Ax = x - hw + i + 1.0f;
+                float Ay = y - hw + j + 1.0f;
                 int ax = (int)Ax;
                 int ay = (int)Ay;
                 if (!embodying) actSetPixel(ax, ay, col);
@@ -720,50 +748,89 @@ namespace Utils {
                 }
             }
             void circle(float x, float y, float radius, Pixel col = FULL) {
-                arc(x, y, radius, 0.0f, PI2, col);
-            }
-            void rect(float x, float y, float width, float height, Pixel col = FULL) {
-                for (int i = 0; i < width; i++) for (int j = 0; j < height; j++) {
-                    float ax = x + (float)i;
-                    float ay = y + (float)j;
-                    Utils::Graphics::setPixel(ax, ay, col);
-                }
-            }
-            void triangle(Vector a, Vector b, Vector c, Pixel col = FULL) {
-                Vector t_a = a - b;
-                Vector t_c = c - b;
-                float l_a = t_a.mag();
-                float l_c = t_c.mag();
-                float inc = 1.0f / (max(l_a, l_c));
-                Vector d = c - a;
-                float len = d.mag();
-                d /= len;
-                for (float i = 0; i < 1.0f; i += inc) {
-                    Vector A = b + t_a * i;
-                    float t_len = len * i;
-                    for (int j = 0; j < t_len; j++) {
-                        Vector p = A + d * j;
-                        setPixel(p.x, p.y, col);
-                    }
+                for (int i = 0; i < radius * 2; i++) {
+                    float X = i / radius;
+                    float form = 2 * sqrt(-X * X + 2 * X);
+                    float w = form * radius / 2.0f;
+                    fillScanline(x - w, x + w, y + i - radius, col);
                 }
             }
             void polygon(std::vector<Vector> points, Pixel col = FULL) {
-                int size = points.size();
-                for (int i = 1; i < size - 1; i++) {
-                    Vector a = points[0];
-                    Vector b = points[i];
-                    Vector c = points[i + 1];
-                    triangle(a, b, c, col);
+                std::vector<float[4]> lines;
+                for (int i = 0; i < points.size(); i++) {
+                    int inx = i;
+                    int inx2 = (i + 1) % points.size();
+                    lines.push_back({ points[inx].x, points[inx].y, points[inx2].x, points[inx2].y });
                 }
+                int minY = INFINITY;
+                int maxY = -INFINITY;
+                for (float* line : lines) {
+                    int y = line[3];
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+                int dif = maxY - minY;
+                for (int i = 0; i < dif; i++) {
+                    std::vector<float*> valid { };
+                    int y = minY + i;
+                    for (float* line : lines) {
+                        int min = min(line[1], line[3]);
+                        int max = max(line[1], line[3]);
+                        if (min <= y && max >= y && max - min) valid.push_back(line);
+                    }
+                    std::vector<int> intersections { };
+                    for (float* line : valid) {
+                        int dx = line[2] - line[0];
+                        int dy = line[3] - line[1];
+                        float m = dy / dx;
+                        float b = line[1] - m * line[0];
+                        int p = (y - b) / m;
+                        if (!dx) p = line[0];
+                        if (intersections[intersections.size() - 1] != p) intersections.push_back(p);
+                    }
+                    std::sort(intersections.begin(), intersections.end(), [](int a, int b) {
+                        return a > b;
+                    });
+                    for (int i = 0; i < intersections.size() - 1; i += 3) {
+                        int min = intersections[i];
+                        int max = intersections[i + 1];
+                        fillScanline(min, max, y, col);
+                    }
+                }
+            }
+            void rect(float x, float y, float width, float height, Pixel col = FULL) {
+                polygon({
+                    { x, y },
+                    { x + width, y },
+                    { x + width, y + height },
+                    { x, y + height }
+                }, col);
+            }
+            void triangle(Vector a, Vector b, Vector c, Pixel col = FULL) {
+                polygon({ a, b, c }, col);
             }
             void image(Image f, float x = 0.0f, float y = 0.0f, float w = Graphics::width, float h = Graphics::height) {
                 float wr = f.width / w;
                 float hr = f.height / h;
-                for (int i = 0; i < w; i++) for (int j = 0; j < h; j++) {
-                    setPixel(x + i, y + j, f.pixels[(int)(i * wr)][(int)(j * hr / 2)]);
+                if (x + w > Graphics::width) w = Graphics::width - x;
+                if (y + h > Graphics::height) h = Graphics::height - y;
+                int initI = 0;
+                int initJ = 0;
+
+                if (x < 0.0f) {
+                    initI = (int)x;
+                    x = 0.0f;
+                } 
+                if (y < 0.0f) {
+                    initJ = (int)y;
+                    y = 0.0f;
+                } 
+                for (int i = initI; i < w; i++) for (int j = initJ; j < h; j++) {
+                    setPixelSafe(x + i, y + j, f.pixels[(int)(i * wr)][(int)(j * hr / 2)]);
                 }
             }
             void pixelOperation(Pixel operation(float, float), float sx = 0.0f, float sy = 0.0f, float sw = width, float sh = height) {
+                
                 for (int i = 0; i < sw; i++) for (int j = 0; j < sh; j++) {
                     float ax = sx + i;
                     float ay = sy + j;
